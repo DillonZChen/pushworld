@@ -17,6 +17,7 @@
 #ifndef SEARCH_BEST_FIRST_SEARCH_H_
 #define SEARCH_BEST_FIRST_SEARCH_H_
 
+#include <chrono>
 #include <memory>
 #include <optional>
 
@@ -25,6 +26,10 @@
 #include "search/priority_queue.h"
 #include "search/random_action_iterator.h"
 #include "search/search.h"
+
+#define MEASURE_TIME(t_s, t_e, t)                                              \
+  t_e = std::chrono::high_resolution_clock::now();                             \
+  t = std::chrono::duration_cast<std::chrono::duration<double>>(t_e - t_s);
 
 namespace pushworld {
 namespace search {
@@ -44,13 +49,19 @@ namespace search {
  */
 template <typename Cost>
 std::optional<Plan> best_first_search(
-    const PushWorldPuzzle& puzzle, heuristic::Heuristic<Cost>& heuristic,
-    priority_queue::PriorityQueue<std::shared_ptr<SearchNode>, Cost>& frontier,
-    StateSet& visited) {
-  const auto& initial_state = puzzle.getInitialState();
+    const PushWorldPuzzle &puzzle, heuristic::Heuristic<Cost> &heuristic,
+    priority_queue::PriorityQueue<std::shared_ptr<SearchNode>, Cost> &frontier,
+    StateSet &visited) {
+  const auto &initial_state = puzzle.getInitialState();
+  int expansions = 0;
+
+  std::chrono::high_resolution_clock::time_point t_s =
+      std::chrono::high_resolution_clock::now();
+  std::chrono::high_resolution_clock::time_point t_e;
+  std::chrono::duration<double> t;
 
   if (puzzle.satisfiesGoal(initial_state)) {
-    return Plan();  // The plan to reach the goal has no actions.
+    return Plan(); // The plan to reach the goal has no actions.
   }
 
   RandomActionIterator action_iterator;
@@ -65,15 +76,21 @@ std::optional<Plan> best_first_search(
   const RelativeState initial_relative_state{initial_state,
                                              std::move(all_object_indices)};
 
+  int best_h = heuristic.estimate_cost_to_goal(initial_relative_state);
   frontier.clear();
-  frontier.push(std::make_shared<SearchNode>(nullptr, initial_state),
-                heuristic.estimate_cost_to_goal(initial_relative_state));
+  frontier.push(std::make_shared<SearchNode>(nullptr, initial_state), best_h);
+
+  MEASURE_TIME(t_s, t_e, t);
+  std::cout << "[h=" << best_h << ", expansions=0, t=" << t.count() << "]"
+            << std::endl;
 
   while (!frontier.empty()) {
     const auto parent_node = frontier.top();
     frontier.pop();
 
-    for (const auto& action : action_iterator.next()) {
+    expansions++;
+
+    for (const auto &action : action_iterator.next()) {
       const RelativeState relative_state =
           puzzle.getNextState(parent_node->state, action);
 
@@ -83,12 +100,26 @@ std::optional<Plan> best_first_search(
             std::make_shared<SearchNode>(parent_node, relative_state.state);
 
         if (puzzle.satisfiesGoal(relative_state.state)) {
+          MEASURE_TIME(t_s, t_e, t);
           // Return the first solution found.
-          return backtrackPlan(puzzle, node);
+          auto plan = backtrackPlan(puzzle, node);
+          std::cout << "Goal found!" << std::endl;
+          std::cout << "expansions=" << expansions << std::endl;
+          std::cout << "plan_length=" << plan.size() << std::endl;
+          std::cout << "time=" << t.count() << std::endl;
+          return plan;
         }
 
-        frontier.push(node, heuristic.estimate_cost_to_goal(relative_state));
+        int h = heuristic.estimate_cost_to_goal(relative_state);
+        frontier.push(node, h);
         visited.insert(relative_state.state);
+
+        if (h < best_h) {
+          best_h = h;
+          MEASURE_TIME(t_s, t_e, t);
+          std::cout << "[h=" << h << ", expansions=" << expansions
+                    << ", t=" << t.count() << "]" << std::endl;
+        }
       }
     }
   }
@@ -101,14 +132,14 @@ std::optional<Plan> best_first_search(
  */
 template <typename Cost>
 std::optional<Plan> best_first_search(
-    const PushWorldPuzzle& puzzle, heuristic::Heuristic<Cost>& heuristic,
-    priority_queue::PriorityQueue<std::shared_ptr<SearchNode>, Cost>&
-        frontier) {
+    const PushWorldPuzzle &puzzle, heuristic::Heuristic<Cost> &heuristic,
+    priority_queue::PriorityQueue<std::shared_ptr<SearchNode>, Cost>
+        &frontier) {
   StateSet visited;
   return best_first_search<Cost>(puzzle, heuristic, frontier, visited);
 }
 
-}  // namespace search
-}  // namespace pushworld
+} // namespace search
+} // namespace pushworld
 
 #endif /* SEARCH_BEST_FIRST_SEARCH_H_ */
