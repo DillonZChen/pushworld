@@ -76,13 +76,11 @@ std::optional<Plan> best_first_search(
   const RelativeState initial_relative_state{initial_state,
                                              std::move(all_object_indices)};
 
-  int best_h = heuristic.estimate_cost_to_goal(initial_relative_state);
   frontier.clear();
-  frontier.push(std::make_shared<SearchNode>(nullptr, initial_state), best_h);
+  frontier.push(std::make_shared<SearchNode>(nullptr, initial_state), 
+                heuristic.estimate_cost_to_goal(initial_relative_state));
 
   MEASURE_TIME(t_s, t_e, t);
-  std::cout << "[h=" << best_h << ", expansions=0, t=" << t.count() << "]"
-            << std::endl;
 
   while (!frontier.empty()) {
     const auto parent_node = frontier.top();
@@ -110,16 +108,8 @@ std::optional<Plan> best_first_search(
           return plan;
         }
 
-        int h = heuristic.estimate_cost_to_goal(relative_state);
-        frontier.push(node, h);
+        frontier.push(node, heuristic.estimate_cost_to_goal(relative_state));
         visited.insert(relative_state.state);
-
-        if (h < best_h) {
-          best_h = h;
-          MEASURE_TIME(t_s, t_e, t);
-          std::cout << "[h=" << h << ", expansions=" << expansions
-                    << ", t=" << t.count() << "]" << std::endl;
-        }
       }
     }
   }
